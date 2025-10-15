@@ -1,37 +1,33 @@
 services:
   github-runner:
-    # Build the runner image with dynamic configuration
+    # Build the Docker image for the runner using the Dockerfile in this directory
     build:
       context: .
       args:
-        # CPU architecture for the runner (arm64 for Raspberry Pi)
+        # Architecture for the GitHub Actions runner binary (e.g., amd64, arm64)
         RUNNER_ARCH: x64
-        # Docker-in-Docker capabilities
-        # Docker group ID from host system - must match host's docker group
-        # Get with: getent group docker | cut -d: -f3
+        # Docker group ID from the host system (must match host's docker group for Docker-in-Docker)
+        # You can get this value with: getent group docker | cut -d: -f3
         DOCKER_GID: ${DOCKER_GID}
 
-    # Load environment variables from .env file
+    # Load environment variables from the specified .env file
     env_file:
       - .env
 
-    # Runtime environment configuration
+    # Set environment variables for the runner container
     environment:
-      # GitHub repository URL to register runner with
+      # The GitHub repository or organization URL to register the runner with
       REPO_URL: ${REPO_URL}
-
-      # Personal Access Token for automatic runner token generation
-      # Create at: https://github.com/settings/tokens with 'repo' and 'workflow' scopes
+      # Personal Access Token for registering the runner (must have 'repo' and 'workflow' scopes)
       ACCESS_TOKEN: ${ACCESS_TOKEN}
-
       # Custom name for this runner instance
       RUNNER_NAME: ${RUNNER_NAME}
-      # Labels for workflow targeting (comma-separated)
+      # Comma-separated labels for workflow targeting
       LABELS: ${LABELS}
 
-    # Mount Docker socket for Docker-in-Docker capabilities
+    # Mount the Docker socket to enable Docker-in-Docker workflows
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
-    # Automatically restart unless manually stopped
+    # Automatically restart the container unless it is explicitly stopped
     restart: unless-stopped

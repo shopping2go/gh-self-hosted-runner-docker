@@ -1,45 +1,42 @@
 #!/bin/bash
 
-# --- Helper Function to validate RUNNER_SCOPE ---
+# --- Validate the RUNNER_SCOPE variable ---
 validate_runner_scope() {
-    # Standard auf repos, wenn ungültig
+    # Default to 'repos' if invalid
     if [[ "$RUNNER_SCOPE" != "repos" && "$RUNNER_SCOPE" != "orgs" ]]; then
-        echo "WARNING: RUNNER_SCOPE is not set or invalid ('$RUNNER_SCOPE'). Defaulting to 'repos'."
+        echo "WARNING: RUNNER_SCOPE is not set or invalid ('$RUNNER_SCOPE'). Using 'repos' as default."
         RUNNER_SCOPE="repos"
     else
         echo "RUNNER_SCOPE is set to '$RUNNER_SCOPE'"
     fi
 
-    # Prüfen, ob REPO_URL zum Scope passt
+    # Check if REPO_URL matches the expected format for the scope
     REPO_PATH=$(echo "${REPO_URL}" | sed 's|https://github.com/||')
     SLASH_COUNT=$(echo "$REPO_PATH" | awk -F"/" '{print NF-1}')
 
     if [[ "$RUNNER_SCOPE" == "repos" && "$SLASH_COUNT" -ne 1 ]]; then
-        echo "WARNING: RUNNER_SCOPE='repos' but REPO_URL='$REPO_URL' does not contain '/org/repo'."
-        echo "Defaulting RUNNER_SCOPE to 'orgs'."
+        echo "WARNING: RUNNER_SCOPE='repos' but REPO_URL='$REPO_URL' does not match '/org/repo'. Switching to 'orgs'."
         RUNNER_SCOPE="orgs"
     elif [[ "$RUNNER_SCOPE" == "orgs" && "$SLASH_COUNT" -ne 0 ]]; then
-        echo "WARNING: RUNNER_SCOPE='orgs' but REPO_URL='$REPO_URL' contains '/org/repo'."
-        echo "Defaulting RUNNER_SCOPE to 'repos'."
+        echo "WARNING: RUNNER_SCOPE='orgs' but REPO_URL='$REPO_URL' looks like a repository URL. Switching to 'repos'."
         RUNNER_SCOPE="repos"
     fi
 }
 
-# --- Call validation at the very beginning ---
+# --- Run validation at script start ---
 validate_runner_scope
 
-# Function to get a fresh runner token using Personal Access Token
+# Obtain a fresh GitHub runner registration token
 get_runner_token() {
-    echo "Getting fresh runner token using Personal Access Token..."
+    echo "Requesting a new runner token from GitHub..."
 
     if [[ -z "${ACCESS_TOKEN}" ]]; then
-        echo "ERROR: ACCESS_TOKEN is required but not provided"
-        echo "Please set your Personal Access Token in the ACCESS_TOKEN environment variable"
-        echo "Create one at: https://github.com/settings/tokens with 'repo' and 'workflow' scopes"
+        echo "ERROR: ACCESS_TOKEN is missing."
+        echo "Please set your Personal Access Token in the ACCESS_TOKEN environment variable."
+        echo "Create one at: https://github.com/settings/tokens with 'repo' and 'workflow' scopes."
         exit 1
     fi
 
-    # Extract repo owner and name from REPO_URL
     REPO_PATH=$(echo "${REPO_URL}" | sed 's|https://github.com/||')
 
     RESPONSE=$(curl -s -X POST \
@@ -47,60 +44,54 @@ get_runner_token() {
         -H "Accept: application/vnd.github.v3+json" \
         "https://api.github.com/${RUNNER_SCOPE}/${REPO_PATH}/actions/runners/registration-token")
 
-    # Extract the token from the JSON response using sed
     RUNNER_TOKEN=$(echo "$RESPONSE" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
     if [[ -n "$RUNNER_TOKEN" ]]; then
-        echo "Successfully obtained fresh runner token"
+        echo "Runner token acquired successfully."
         export RUNNER_TOKEN
         return 0
     else
-        echo "Failed to extract runner token from response: $RESPONSE"
-        echo "Please check your ACCESS_TOKEN and repository permissions"
+        echo "Failed to retrieve runner token. Response: $RESPONSE"
+        echo "Check your ACCESS_TOKEN and repository permissions."
         exit 1
     fi
 }
 
-# Function to remove existing runner via GitHub API
+# Remove any existing runner with the same name from GitHub
 remove_runner() {
     local runner_name="${RUNNER_NAME:-$(hostname)}"
-    echo "Removing any existing runner with name: $runner_name"
+    echo "Checking for existing runner named: $runner_name"
 
-    # Extract repo owner and name from REPO_URL
     REPO_PATH=$(echo "${REPO_URL}" | sed 's|https://github.com/||')
 
-    # Get list of runners and find the one with our name
     RUNNERS_RESPONSE=$(curl -s -H "Authorization: token ${ACCESS_TOKEN}" \
         -H "Accept: application/vnd.github.v3+json" \
         "https://api.github.com/${RUNNER_SCOPE}/${REPO_PATH}/actions/runners")
 
-    # Extract runner ID - try multiple parsing approaches
     RUNNER_ID=$(echo "$RUNNERS_RESPONSE" | sed -n "s/.*\"id\":[[:space:]]*\([0-9]*\),.*\"name\":[[:space:]]*\"$runner_name\".*/\1/p")
 
     if [[ -z "$RUNNER_ID" ]]; then
-        # Alternative parsing method
         RUNNER_ID=$(echo "$RUNNERS_RESPONSE" | grep -B 5 "\"name\":\"$runner_name\"" | grep -o '"id":[0-9]*' | cut -d':' -f2 | head -1)
     fi
 
     if [[ -n "$RUNNER_ID" ]]; then
-        echo "Found existing runner with ID: $RUNNER_ID, removing it..."
+        echo "Existing runner found (ID: $RUNNER_ID). Removing from GitHub..."
         curl -s -X DELETE \
             -H "Authorization: token ${ACCESS_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/${RUNNER_SCOPE}/${REPO_PATH}/actions/runners/$RUNNER_ID" > /dev/null
-        echo "Runner removed via GitHub API"
-        # Give GitHub a moment to process the deletion
+        echo "Runner removed."
         sleep 2
     else
-        echo "No existing runner found with name: $runner_name"
+        echo "No runner with this name found on GitHub."
     fi
 }
 
-# Function to setup/configure the runner
+# Configure the GitHub Actions runner
 setup_runner() {
     remove_runner
 
-    echo "Configuring runner for repository: ${REPO_URL}"
+    echo "Registering runner for: ${REPO_URL}"
     ./config.sh --unattended \
         --url ${REPO_URL} \
         --token ${RUNNER_TOKEN} \
@@ -110,106 +101,95 @@ setup_runner() {
         --replace
 }
 
-# Background token refresh service
-token_refresh_service() {
-    local refresh_interval=3000  # 50 minutes in seconds
+# Background process to refresh the runner token periodically
+refresh_token_service() {
+    local refresh_interval=3000  # 50 minutes
 
     while true; do
         sleep $refresh_interval
-        echo "$(date): Auto-refreshing runner token..."
+        echo "$(date): Refreshing runner token..."
 
-        # Get new token
         if get_runner_token; then
-            echo "$(date): Successfully refreshed token, restarting runner..."
+            echo "$(date): Token refreshed. Restarting runner..."
 
-            # Find and gracefully stop the current runner
             local runner_pid=$(pgrep -f "Runner.Listener")
             if [[ -n "$runner_pid" ]]; then
-                echo "$(date): Stopping current runner (PID: $runner_pid)"
+                echo "$(date): Stopping runner process (PID: $runner_pid)"
                 kill -TERM "$runner_pid"
 
-                # Wait for graceful shutdown
                 local timeout=30
                 while [[ $timeout -gt 0 ]] && kill -0 "$runner_pid" 2>/dev/null; do
                     sleep 1
                     ((timeout--))
                 done
 
-                # Force kill if still running
                 if kill -0 "$runner_pid" 2>/dev/null; then
-                    echo "$(date): Force killing runner"
+                    echo "$(date): Forcibly killing runner process."
                     kill -KILL "$runner_pid"
                 fi
             fi
 
-            # Reconfigure and restart runner
-            echo "$(date): Reconfiguring runner with fresh token..."
+            echo "$(date): Reconfiguring runner with new token."
             setup_runner
 
-            echo "$(date): Starting refreshed runner..."
+            echo "$(date): Restarting runner process."
             ./run.sh &
             RUNNER_PID=$!
-
-            echo "$(date): Runner restarted successfully with PID: $RUNNER_PID"
+            echo "$(date): Runner restarted (PID: $RUNNER_PID)"
         else
-            echo "$(date): Failed to refresh token, keeping current runner"
+            echo "$(date): Token refresh failed. Keeping current runner."
         fi
     done
 }
 
-# Function to remove runner on exit
+# Cleanup function to remove runner registration on exit
 cleanup() {
-    echo "Cleaning up..."
+    echo "Performing cleanup before exit..."
 
-    # Stop token refresh service if running
     if [[ -n "$REFRESH_PID" ]]; then
-        echo "Stopping token refresh service..."
+        echo "Stopping token refresh background process..."
         kill "$REFRESH_PID" 2>/dev/null || true
     fi
 
-    # Stop runner if running
     if [[ -n "$RUNNER_PID" ]]; then
-        echo "Stopping runner..."
+        echo "Stopping runner process..."
         kill "$RUNNER_PID" 2>/dev/null || true
     fi
 
-    # Always remove runner on exit since we clean up on startup anyway
-    echo "Removing runner registration..."
-    # Try local config removal first, then API removal as fallback
+    echo "Unregistering runner from GitHub..."
     ./config.sh remove --unattended --token ${RUNNER_TOKEN} 2>/dev/null || remove_runner
 }
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 
-
-# Add runner to docker group for Docker socket access if DOCKER_GID is set
+# Add runner user to docker group if DOCKER_GID is provided
 if [[ -n "$DOCKER_GID" ]]; then
     if ! getent group docker >/dev/null; then
         sudo groupadd -g "$DOCKER_GID" docker
     fi
     sudo usermod -aG docker runner
-    echo "Added runner to docker group with GID $DOCKER_GID"
+    echo "Runner user added to docker group (GID: $DOCKER_GID)"
 else
-    echo "DOCKER_GID not set, skipping docker group setup."
+    echo "DOCKER_GID not set. Skipping docker group setup."
 fi
 
-# Get fresh runner token at startup
+# Get a fresh runner token at container startup
 get_runner_token
 
-# Setup the runner
+# Register the runner
 setup_runner
 
-# Start the token refresh service in background
-echo "Starting token refresh service..."
-token_refresh_service &
+# Start the background token refresh process
+echo "Launching token refresh background service..."
+refresh_token_service &
 REFRESH_PID=$!
-echo "Token refresh service started (PID: $REFRESH_PID)"
+echo "Token refresh service running (PID: $REFRESH_PID)"
 
-# Start the runner
-echo "Starting GitHub Actions runner..."
+# Start the GitHub Actions runner
+echo "Starting GitHub Actions runner process..."
 ./run.sh &
 RUNNER_PID=$!
-echo "Runner started (PID: $RUNNER_PID)"
+echo "Runner process started (PID: $RUNNER_PID)"
 
-# Wait for the runner process
+# Wait for the runner process to finish
 wait $RUNNER_PID
