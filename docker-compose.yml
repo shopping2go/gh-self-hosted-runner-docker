@@ -5,26 +5,20 @@ services:
       context: .
       args:
         # Architecture for the GitHub Actions runner binary (e.g., amd64, arm64)
-        RUNNER_ARCH: ${RUNNER_ARCH}
+        RUNNER_ARCH: ${RUNNER_ARCH:-x64}
         # Docker group ID from the host system (must match host's docker group for Docker-in-Docker)
         # You can get this value with: getent group docker | cut -d: -f3
-        DOCKER_GID: ${DOCKER_GID}
-
-    # Load default values from .env-repo file (optional)
-    # These values can be overridden in Portainer
-    env_file:
-      - .env-repo
+        DOCKER_GID: ${DOCKER_GID:-999}
 
     # Set environment variables for the runner container
     # These variables will be visible and editable in Portainer
-    # Values from .env-repo will be used as defaults, but can be overridden
     environment:
-      - REPO_URL
-      - ACCESS_TOKEN
-      - RUNNER_NAME
-      - LABELS
-      - DOCKER_GID
-      - RUNNER_ARCH
+      REPO_URL: ${REPO_URL:-https://github.com/your-org/your-repo}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-your-token-here}
+      RUNNER_NAME: ${RUNNER_NAME:-docker-runner}
+      LABELS: ${LABELS:-self-hosted,docker}
+      DOCKER_GID: ${DOCKER_GID:-999}
+      RUNNER_ARCH: ${RUNNER_ARCH:-x64}
 
     # Mount the Docker socket to enable Docker-in-Docker workflows
     volumes:

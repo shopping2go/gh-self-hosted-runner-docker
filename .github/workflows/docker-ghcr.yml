@@ -58,14 +58,44 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
       - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner
-          short-description: "GitHub Self-Hosted Runner in Docker with Docker-in-Docker support"
-          readme-filepath: ./README.md
-          enable-url-completion: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "📝 Updating Docker Hub README..."
+          
+          # Get JWT token from Docker Hub
+          HUB_TOKEN=$(curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+          
+          if [ -z "$HUB_TOKEN" ] || [ "$HUB_TOKEN" = "null" ]; then
+            echo "❌ Failed to acquire Docker Hub token"
+            exit 1
+          fi
+          
+          echo "✅ Token acquired successfully"
+          
+          # Read and escape README content for JSON
+          README_CONTENT=$(jq -Rs . < README.md)
+          
+          # Update repository description
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X PATCH \
+            -H "Authorization: JWT ${HUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\":${README_CONTENT}}" \
+            "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/gh-self-hosted-runner/")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Docker Hub README updated successfully"
+          else
+            echo "⚠️  Update returned HTTP $HTTP_CODE"
+            echo "$RESPONSE" | head -n-1
+          fi
         continue-on-error: true
 
       - name: Display published tags
