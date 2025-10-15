@@ -45,7 +45,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Download and install the latest GitHub Actions runner (as root)
-ARG RUNNER_ARCH=amd64
+# Note: GitHub uses 'x64' for Intel/AMD 64-bit architecture, not 'amd64'
+ARG RUNNER_ARCH=x64
 RUN RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/v//') \
     && echo "Installing GitHub Actions Runner version: $RUNNER_VERSION for arch: $RUNNER_ARCH" \
     && curl -o actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz \
