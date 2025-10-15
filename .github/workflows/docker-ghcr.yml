@@ -65,6 +65,7 @@ jobs:
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner
           short-description: "GitHub Self-Hosted Runner in Docker with Docker-in-Docker support"
           readme-filepath: ./README.md
+          enable-url-completion: true
         continue-on-error: true
 
       - name: Display published tags
