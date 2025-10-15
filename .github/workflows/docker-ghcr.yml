@@ -57,10 +57,20 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner
+          short-description: "GitHub Self-Hosted Runner in Docker with Docker-in-Docker support"
+          readme-filepath: ./README.md
+
       - name: Display published tags
         run: |
           echo "✅ Published to GHCR: latest, ${{ github.sha }}"
           echo "✅ Published to Docker Hub: latest, ${{ steps.version.outputs.date_tag }}"
+          echo "✅ Docker Hub README updated"
 
       - name: Make GHCR image public
         env:
