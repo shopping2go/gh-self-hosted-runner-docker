@@ -55,8 +55,8 @@ For more details, see the official GitHub documentation:
 ### 1. Clone this repository
 
 ```bash
-git clone https://github.com/shopping2go/gh-actions-docker-runner.git
-cd gh-actions-docker-runner
+git clone https://github.com/shopping2go/gh-self-hosted-runner-docker.git
+cd gh-self-hosted-runner-docker
 ```
 
 ### 2. Configure your environment
