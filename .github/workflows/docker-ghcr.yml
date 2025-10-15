@@ -21,22 +21,16 @@ jobs:
       - name: Generate version tags
         id: version
         run: |
-          # Generate date-based version (YYYY-MM-DD)
           DATE_TAG=$(date +'%Y-%m-%d')
           echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
           
-          # Generate short SHA (first 7 characters)
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
           
-          # Combined date+sha tag
           DATE_SHA_TAG="${DATE_TAG}-${SHORT_SHA}"
           echo "date_sha_tag=$DATE_SHA_TAG" >> $GITHUB_OUTPUT
           
-          echo "Generated tags:"
-          echo "  Date: $DATE_TAG"
-          echo "  Short SHA: $SHORT_SHA"
-          echo "  Combined: $DATE_SHA_TAG"
+          echo "Tags: latest, $DATE_TAG, $SHORT_SHA"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,132 +59,53 @@ jobs:
             ghcr.io/shopping2go/gh-self-hosted-runner:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_tag }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_sha_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
       - name: Display published tags
         run: |
-          echo "✅ Images published with the following tags:"
-          echo ""
-          echo "GitHub Container Registry (GHCR):"
-          echo "  - ghcr.io/shopping2go/gh-self-hosted-runner:latest"
-          echo "  - ghcr.io/shopping2go/gh-self-hosted-runner:${{ github.sha }}"
-          echo ""
-          echo "Docker Hub:"
-          echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:latest"
-          echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_tag }}"
-          echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_sha_tag }}"
+          echo "✅ Published to GHCR: latest, ${{ github.sha }}"
+          echo "✅ Published to Docker Hub: latest, ${{ steps.version.outputs.date_tag }}"
 
       - name: Make GHCR image public
         env:
-          # Use GHCR_PAT if available, otherwise fall back to GITHUB_TOKEN (which won't work for visibility changes)
           GH_TOKEN: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
         run: |
-          echo "Setting GHCR package visibility to public..."
-          
           PACKAGE_NAME="gh-self-hosted-runner"
           OWNER="shopping2go"
           
-          # Check if we're using a PAT or the default GITHUB_TOKEN
-          if [ -n "${{ secrets.GHCR_PAT }}" ]; then
-            echo "Using GHCR_PAT for authentication..."
-            HAS_PAT=true
-          else
-            echo "⚠️  WARNING: GHCR_PAT secret not found. Using GITHUB_TOKEN (limited permissions)."
-            echo "To enable automatic public visibility, create a PAT with 'write:packages' scope:"
-            echo "1. Go to https://github.com/settings/tokens/new"
-            echo "2. Select 'write:packages' scope"
-            echo "3. Add the token as a repository secret named 'GHCR_PAT'"
-            echo ""
-            HAS_PAT=false
+          if [ -z "${{ secrets.GHCR_PAT }}" ]; then
+            echo "⚠️  No GHCR_PAT - using GITHUB_TOKEN (limited permissions)"
           fi
           
-          # Wait a moment for the package to be registered in GHCR
           sleep 10
           
-          echo "Attempting to set package visibility for $OWNER/$PACKAGE_NAME..."
-          
-          # Try organization endpoint first
-          if gh api \
-            --method PATCH \
+          # Try to set visibility
+          if gh api --method PATCH \
             -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
             "/orgs/$OWNER/packages/container/$PACKAGE_NAME" \
-            -f visibility='public' 2>&1; then
-            echo "✅ Successfully set visibility via organization endpoint"
-            SUCCESS=true
-          else
-            echo "Organization endpoint failed, trying user endpoint..."
-            # Try user endpoint
-            if gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "/users/$OWNER/packages/container/$PACKAGE_NAME" \
-              -f visibility='public' 2>&1; then
-              echo "✅ Successfully set visibility via user endpoint"
-              SUCCESS=true
-            else
-              echo "Both endpoints failed"
-              SUCCESS=false
-            fi
+            -f visibility='public' 2>/dev/null || \
+             gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/users/$OWNER/packages/container/$PACKAGE_NAME" \
+            -f visibility='public' 2>/dev/null; then
+            echo "✅ Visibility set to public"
           fi
           
-          # Verify the package visibility
           sleep 3
-          echo ""
-          echo "Verifying package visibility..."
           
+          # Verify visibility
           CURRENT_VISIBILITY="unknown"
-          
-          # Try org endpoint
-          if RESPONSE=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/orgs/$OWNER/packages/container/$PACKAGE_NAME" 2>/dev/null); then
+          if RESPONSE=$(gh api "/orgs/$OWNER/packages/container/$PACKAGE_NAME" 2>/dev/null); then
+            CURRENT_VISIBILITY=$(echo "$RESPONSE" | jq -r '.visibility // "unknown"')
+          elif RESPONSE=$(gh api "/users/$OWNER/packages/container/$PACKAGE_NAME" 2>/dev/null); then
             CURRENT_VISIBILITY=$(echo "$RESPONSE" | jq -r '.visibility // "unknown"')
           fi
           
-          # Try user endpoint if org failed
-          if [ "$CURRENT_VISIBILITY" = "unknown" ]; then
-            if RESPONSE=$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "/users/$OWNER/packages/container/$PACKAGE_NAME" 2>/dev/null); then
-              CURRENT_VISIBILITY=$(echo "$RESPONSE" | jq -r '.visibility // "unknown"')
-            fi
-          fi
-          
-          echo "Current package visibility: $CURRENT_VISIBILITY"
-          
           if [ "$CURRENT_VISIBILITY" = "public" ]; then
-            echo "✅ SUCCESS: Package is PUBLIC and accessible to everyone!"
-            echo "Image can be pulled with: docker pull ghcr.io/$OWNER/$PACKAGE_NAME:latest"
+            echo "✅ Package is PUBLIC"
           else
-            echo ""
-            echo "❌ Package is still PRIVATE"
-            if [ "$HAS_PAT" = "false" ]; then
-              echo ""
-              echo "⚠️  IMPORTANT: Automatic visibility change requires a PAT with 'write:packages' scope."
-              echo ""
-              echo "Option 1 - Add GHCR_PAT Secret (Recommended for automation):"
-              echo "  1. Create a PAT at: https://github.com/settings/tokens/new"
-              echo "  2. Select scope: 'write:packages'"
-              echo "  3. Copy the token"
-              echo "  4. Add it as a repository secret: https://github.com/$OWNER/gh-self-hosted-runner/settings/secrets/actions"
-              echo "  5. Name: GHCR_PAT"
-              echo "  6. Re-run this workflow"
-              echo ""
-            fi
-            echo "Option 2 - Manual Change:"
-            echo "  1. Go to: https://github.com/orgs/$OWNER/packages/container/$PACKAGE_NAME/settings"
-              echo "  2. Or: https://github.com/users/$OWNER/packages/container/$PACKAGE_NAME/settings"
-            echo "  3. Scroll to 'Danger Zone'"
-            echo "  4. Click 'Change visibility'"
-            echo "  5. Select 'Public' and confirm"
+            echo "❌ Package is PRIVATE - manual change required:"
+            echo "   https://github.com/orgs/$OWNER/packages/container/$PACKAGE_NAME/settings"
           fi
-          
-          # Don't fail the workflow
-          exit 0
