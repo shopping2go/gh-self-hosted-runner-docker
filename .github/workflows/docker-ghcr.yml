@@ -72,7 +72,8 @@ jobs:
           
           if [ -z "$HUB_TOKEN" ] || [ "$HUB_TOKEN" = "null" ]; then
             echo "❌ Failed to acquire Docker Hub token"
-            exit 1
+            echo "ℹ️  Please check your DOCKERHUB_TOKEN secret"
+            exit 0
           fi
           
           echo "✅ Token acquired successfully"
@@ -89,12 +90,24 @@ jobs:
             "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/gh-self-hosted-runner/")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
           
           if [ "$HTTP_CODE" = "200" ]; then
             echo "✅ Docker Hub README updated successfully"
+          elif [ "$HTTP_CODE" = "403" ]; then
+            echo "⚠️  Update returned HTTP 403 (Forbidden)"
+            echo "ℹ️  Your Docker Hub token doesn't have permission to update repository descriptions."
+            echo "ℹ️  To fix this, you need to:"
+            echo "    1. Go to https://hub.docker.com/settings/security"
+            echo "    2. Create a new Access Token with 'Read, Write, Delete' permissions"
+            echo "    3. Update the DOCKERHUB_TOKEN secret in GitHub with the new token"
+            echo "    OR use your Docker Hub account password instead of an access token"
+            echo ""
+            echo "ℹ️  For now, you can manually update the description at:"
+            echo "    https://hub.docker.com/repository/docker/${DOCKERHUB_USERNAME}/gh-self-hosted-runner/general"
           else
             echo "⚠️  Update returned HTTP $HTTP_CODE"
-            echo "$RESPONSE" | head -n-1
+            echo "$BODY"
           fi
         continue-on-error: true
 

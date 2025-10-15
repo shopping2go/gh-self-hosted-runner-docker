@@ -62,5 +62,15 @@ WORKDIR /github/workspace
 COPY --chown=runner:runner start.sh /github/workspace/start.sh
 RUN chmod +x /github/workspace/start.sh
 
+# Default environment variables (make them visible/editable in Portainer when creating a container)
+ENV \
+    RUNNER_SCOPE="repos" \
+    REPO_URL="https://github.com/your-org/your-repo" \
+    ACCESS_TOKEN="your-token-here" \
+    RUNNER_NAME="docker-runner" \
+    LABELS="self-hosted,docker" \
+    RUNNER_ARCH="x64" \
+    DOCKER_GID="999"
+
 # Set the default command to launch the runner
 CMD ["/github/workspace/start.sh"]
