@@ -8,22 +8,22 @@ services:
         RUNNER_ARCH: x64
         # Docker group ID from the host system (must match host's docker group for Docker-in-Docker)
         # You can get this value with: getent group docker | cut -d: -f3
-        DOCKER_GID: ${DOCKER_GID}
+        DOCKER_GID: ${DOCKER_GID:-999}
 
-    # Load environment variables from the specified .env file
+    # Load environment variables from the specified .env file (optional, can be overridden in Portainer)
     env_file:
       - .env
 
     # Set environment variables for the runner container
     environment:
       # The GitHub repository or organization URL to register the runner with
-      REPO_URL: ${REPO_URL}
+      REPO_URL: ${REPO_URL:-https://github.com/your-org/your-repo}
       # Personal Access Token for registering the runner (must have 'repo' and 'workflow' scopes)
-      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-your-github-token-here}
       # Custom name for this runner instance
-      RUNNER_NAME: ${RUNNER_NAME}
+      RUNNER_NAME: ${RUNNER_NAME:-docker-runner}
       # Comma-separated labels for workflow targeting
-      LABELS: ${LABELS}
+      LABELS: ${LABELS:-self-hosted,docker}
 
     # Mount the Docker socket to enable Docker-in-Docker workflows
     volumes:
