@@ -19,6 +19,18 @@
 - 🐳 Full Docker-in-Docker compatibility
 - ⚙️ Easy configuration via `.env` files
 - 🧹 Automatic cleanup of old runners
+- 🔒 Security-hardened configuration
+
+---
+
+## ⚠️ Security Warning
+
+**WICHTIG:** Self-hosted Runner mit Docker-Socket-Zugriff sollten **NUR** für **private, vertrauenswürdige Repositories** verwendet werden!
+
+- ❌ **NICHT** für public Repositories verwenden
+- ❌ **NICHT** für Repositories mit externen Contributoren ohne Review-Prozess
+- ✅ **NUR** für private, interne Projekte mit Code-Review-Prozess
+
 
 ---
 
@@ -48,18 +60,16 @@ To create a Personal Access Token (PAT) for GitHub Actions, follow these steps:
 For more details, see the official GitHub documentation:  
 👉 [Creating a personal access token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)
 
----
-
-## ⚡ Quick Start
-
-### 1. Clone this repository
+**Wichtig:** Ermitteln Sie zuerst die Docker Group ID Ihres Host-Systems:
 
 ```bash
-git clone https://github.com/shopping2go/gh-self-hosted-runner-docker.git
-cd gh-self-hosted-runner-docker
+# Auf Linux/Mac:
+getent group docker | cut -d: -f3
+
+# Das Ergebnis (z.B. 999) verwenden Sie als DOCKER_GID
 ```
 
-### 2. Configure your environment
+### 1. Configure your environment
 
 #### 🧱 Repository Runner – `.env-repo`
 
@@ -83,8 +93,7 @@ LABELS=docker,org
 DOCKER_GID=999
 ```
 
-### 3. Build & start the runner
-
+### 2. Build & start the runner
 ```bash
 # For repository-level runner
 docker-compose --env-file .env-repo up -d
@@ -92,6 +101,13 @@ docker-compose --env-file .env-repo up -d
 # For organization-level runner
 docker-compose --env-file .env-org up -d
 ```
+### 3. Verify Runner Registration
+
+Nach dem Start sollte der Runner in GitHub sichtbar sein:
+- **Repository:** `Settings` → `Actions` → `Runners`
+- **Organization:** `Settings` → `Actions` → `Runners`
+
+Der Runner sollte als "Idle" oder "Active" angezeigt werden.
 
 ---
 
@@ -144,6 +160,18 @@ docker-compose --env-file .env-org up -d
 ## 🪪 License
 
 Licensed under the MIT License – see [LICENSE](LICENSE) for details.
+
+---
+
+## Haftungsausschluss \- Nutzung auf eigene Gefahr
+
+Die Nutzung dieses Projekts erfolgt vollständig auf eigene Gefahr. Die Maintainer übernehmen keine Gewähr für die Funktionsfähigkeit, Sicherheit oder Eignung des Codes für einen bestimmten Zweck. Insbesondere wird keine Haftung übernommen für direkte oder indirekte Schäden, Datenverlust, entgangene Gewinne oder sonstige Folgeschäden, die aus der Nutzung oder Unmöglichkeit der Nutzung dieses Projekts entstehen.
+
+Der Nutzer ist allein verantwortlich für die Implementierung zusätzlicher Sicherheitsmaßnahmen, Backups und Prüfprozesse vor dem produktiven Einsatz. Es obliegt dem Anwender, dieses Projekt in einer geeigneten, abgesicherten Umgebung zu betreiben (z.\,B. isolierte Netzwerke, eingeschränkte Zugriffsrechte, least-privilege PATs).
+
+Der Nutzer stellt die Maintainer von allen Ansprüchen Dritter frei, die aus der Nutzung dieses Projekts resultieren, soweit gesetzlich zulässig.
+
+Hinweis: Dies stellt keine Rechtsberatung dar. Für eine rechtsverbindliche Haftungsbegrenzung oder rechtliche Absicherung sollte ein qualifizierter Rechtsbeistand konsultiert werden.
 
 ---
 

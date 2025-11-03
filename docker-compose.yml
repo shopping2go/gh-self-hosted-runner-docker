@@ -10,9 +10,9 @@ services:
         # You can get this value with: getent group docker | cut -d: -f3
         DOCKER_GID: ${DOCKER_GID:-999}
 
-    # Set environment variables for the runner container
-    # These variables will be visible and editable in Portainer
-    environment:
+    # Container name for easier management
+    container_name: github-runner
+
       REPO_URL: ${REPO_URL:-https://github.com/your-org/your-repo}
       ACCESS_TOKEN: ${ACCESS_TOKEN:-your-token-here}
       RUNNER_NAME: ${RUNNER_NAME:-docker-runner}
@@ -22,7 +22,24 @@ services:
 
     # Mount the Docker socket to enable Docker-in-Docker workflows
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      RUNNER_SCOPE: ${RUNNER_SCOPE:-repos}
 
     # Automatically restart the container unless it is explicitly stopped
+    # WARNING: This gives the container full access to the Docker daemon!
     restart: unless-stopped
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation
+
+    # Resource limits (adjust based on your needs)
+    # Uncomment to enable resource constraints
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 2G

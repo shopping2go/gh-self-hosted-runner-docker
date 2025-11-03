@@ -35,6 +35,11 @@ RUN useradd -m -s /bin/bash runner \
     && usermod -aG sudo runner \
     && echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+# Create docker group with a placeholder GID (will be adjusted at runtime via start.sh)
+ARG DOCKER_GID=999
+RUN groupadd -g ${DOCKER_GID} docker || true \
+    && usermod -aG docker runner
+
 # Set up the workspace directory structure and permissions
 RUN mkdir -p /github/workspace && \
     chown -R runner:runner /github /github/workspace
@@ -63,6 +68,8 @@ COPY --chown=runner:runner start.sh /github/workspace/start.sh
 RUN chmod +x /github/workspace/start.sh
 
 # Default environment variables (make them visible/editable in Portainer when creating a container)
+# Security Note: The DOCKER_GID must match your host's docker group ID for Docker-in-Docker
+# Get it with: getent group docker | cut -d: -f3
 ENV \
     RUNNER_SCOPE="repos" \
     REPO_URL="https://github.com/your-org/your-repo" \
