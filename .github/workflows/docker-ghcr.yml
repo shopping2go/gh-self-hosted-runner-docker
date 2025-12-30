@@ -57,6 +57,12 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+      - name: Verify GitHub CLI installation
+        run: |
+          echo "🧪 Testing GitHub CLI installation..."
+          docker run --rm ghcr.io/shopping2go/gh-self-hosted-runner:${{ github.sha }} gh --version
+          echo "✅ GitHub CLI is installed and working!"
+
       - name: Update Docker Hub description
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
