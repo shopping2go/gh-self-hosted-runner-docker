@@ -43,21 +43,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image to both registries
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          load: false
-          tags: |
-            ghcr.io/shopping2go/gh-self-hosted-runner:latest
-            ghcr.io/shopping2go/gh-self-hosted-runner:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
       - name: Build local test image for verification
         uses: docker/build-push-action@v6
         with:
@@ -66,12 +51,27 @@ jobs:
           load: true
           tags: gh-runner-test:latest
           cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platform: linux/amd64
 
       - name: Verify GitHub CLI installation
         run: |
           echo "🧪 Testing GitHub CLI installation..."
           docker run --rm gh-runner-test:latest gh --version
           echo "✅ GitHub CLI is installed and working!"
+
+      - name: Build and push Docker image to both registries
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/shopping2go/gh-self-hosted-runner:latest
+            ghcr.io/shopping2go/gh-self-hosted-runner:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_tag }}
+          cache-from: type=gha
+          platforms: linux/amd64,linux/arm64
 
       - name: Update Docker Hub description
         env:
