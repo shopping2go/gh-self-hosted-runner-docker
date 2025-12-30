@@ -71,6 +71,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/gh-self-hosted-runner:${{ steps.version.outputs.date_tag }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
       - name: Update Docker Hub description
