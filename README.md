@@ -20,6 +20,7 @@
 - ⚙️ Easy configuration via `.env` files
 - 🧹 Automatic cleanup of old runners
 - 🔒 Security-hardened configuration
+- 🛠️ GitHub CLI (`gh`) pre-installed for advanced GitHub operations
 
 ---
 
@@ -118,6 +119,30 @@ Der Runner sollte als "Idle" oder "Active" angezeigt werden.
 - Starts both the runner and a background token refresher
 - Automatically removes stale runners on restart
 - Supports Docker socket access for Docker-based workflows
+
+---
+
+## 🛠️ Pre-installed Tools
+
+The Docker image comes with several essential tools pre-installed:
+
+- **GitHub CLI (`gh`)** - Direct GitHub API interaction and automation
+  - Version: Latest stable release
+  - Documentation: https://cli.github.com/
+  - Example usage in workflows:
+    ```yaml
+    - name: Create GitHub Issue
+      run: |
+        gh issue create --title "Build Failed" --body "Details here"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ```
+
+- **Docker CLI** - Docker-in-Docker support for containerized builds
+- **Git** - Version control operations
+- **jq** - JSON processing for API responses
+- **Maven** - Java build automation
+- **Python 3** - Python runtime and pip package manager
 
 ---
 
