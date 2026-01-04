@@ -19,6 +19,10 @@ on:
           - action
           - manual
 
+# Grant minimal permissions needed for this workflow
+permissions:
+  contents: read
+
 jobs:
   # Approach 1: Using docker/setup-docker action (Recommended)
   docker-with-action:
