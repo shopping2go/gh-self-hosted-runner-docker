@@ -179,9 +179,16 @@ else
 fi
 
 # Start Docker daemon if ENABLE_DIND is set to true
-if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND,,}" == "1" ]]; then
+if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
-    sudo dockerd &
+    
+    # Create secure log directory
+    DOCKERD_LOG_DIR="/github/workspace/.dockerd-logs"
+    mkdir -p "$DOCKERD_LOG_DIR"
+    chmod 700 "$DOCKERD_LOG_DIR"
+    DOCKERD_LOG="$DOCKERD_LOG_DIR/dockerd.log"
+    
+    sudo dockerd 2>&1 | tee "$DOCKERD_LOG" &
     DOCKERD_PID=$!
     
     # Wait for Docker daemon to be ready
@@ -190,8 +197,18 @@ if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND,,}" == "1" ]]; then
     attempt=0
     while ! docker version --format '{{.Server.Version}}' >/dev/null 2>&1; do
         attempt=$((attempt + 1))
+        
+        # Check if dockerd process is still running
+        if ! kill -0 "$DOCKERD_PID" 2>/dev/null; then
+            echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
+            cat "$DOCKERD_LOG" 2>/dev/null || true
+            exit 1
+        fi
+        
         if [[ $attempt -ge $max_attempts ]]; then
             echo "ERROR: Docker daemon failed to start after ${max_attempts} seconds"
+            echo "Docker daemon logs:"
+            cat "$DOCKERD_LOG" 2>/dev/null || true
             exit 1
         fi
         sleep 1

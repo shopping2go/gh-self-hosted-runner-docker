@@ -22,7 +22,8 @@ services:
       # Set to 'true' to start Docker daemon inside the container (Docker-in-Docker)
       ENABLE_DIND: ${ENABLE_DIND:-false}
 
-    # Mount the Docker socket to enable Docker-in-Docker workflows
+    # Mount the host Docker socket so the runner can use the host Docker daemon
+    # (alternative to ENABLE_DIND=true, which would run a Docker daemon inside the container)
     volumes:
       RUNNER_SCOPE: ${RUNNER_SCOPE:-repos}
 
@@ -31,9 +32,13 @@ services:
     restart: unless-stopped
       - /var/run/docker.sock:/var/run/docker.sock:rw
 
-    # Security options
-    security_opt:
-      - no-new-privileges:true  # Prevent privilege escalation
+    # Required for ENABLE_DIND=true to run Docker daemon inside the container
+    # WARNING: Privileged mode gives the container full access to the host!
+    privileged: true
+
+    # Security options (note: no-new-privileges may conflict with privileged mode)
+    # security_opt:
+    #   - no-new-privileges:true  # Prevent privilege escalation
 
     # Resource limits (adjust based on your needs)
     # Uncomment to enable resource constraints

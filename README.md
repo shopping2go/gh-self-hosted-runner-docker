@@ -205,7 +205,7 @@ Enable dind when your workflows need to:
 - Push images to container registries
 - Use Docker Compose for multi-container setups
 
-**Note:** The Docker socket can also be mounted from the host when using the provided `docker-compose.yml` for an alternative approach.
+**Important:** When using `ENABLE_DIND=true`, the container requires privileged mode. The provided `docker-compose.yml` already includes the necessary configuration.
 
 ---
 
