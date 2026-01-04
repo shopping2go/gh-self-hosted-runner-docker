@@ -39,76 +39,102 @@
 
 - Docker ≥ **20.10**
 - Docker Compose ≥ **1.29**
-- GitHub **Personal Access Token** (PAT) with `repo` and `workflow` scopes ([see instructions below](#-how-to-get-a-personal-access-token))
+- GitHub **Personal Access Token** (PAT) with `repo` and `workflow` scopes ([see instructions below](#how-to-get-a-personal-access-token))
 - Linux host recommended (for Docker socket access)
 - More info: [GitHub documentation for self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners)
 
 ---
 
-## 🔑 How to Get a Personal Access Token
+## ⚙️ Environment Variables
 
-To create a Personal Access Token (PAT) for GitHub Actions, follow these steps:
+All configuration is done via environment variables, which can be set in `.env` files, via `docker-compose`, or directly with `docker run`.
 
-1. Go to [GitHub Settings – Developer settings – Personal access tokens](https://github.com/settings/tokens).
-2. Click **Generate new token** (Classic) or **Generate new token (Fine-grained)**.
-3. Give your token a name and select an expiration date.
-4. Select at least the following permissions:
-   - **repo** (for repository access)
-   - **workflow** (for Actions workflows)
-5. Click **Generate token** and copy the token. It will only be shown once!
-6. Use this token in your `.env` file as `ACCESS_TOKEN`.
+### Supported Variables
 
-For more details, see the official GitHub documentation:  
-👉 [Creating a personal access token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `RUNNER_SCOPE` | String | No | `repos` | Runner scope: `repos` or `orgs` |
+| `REPO_URL` | String | Yes | - | GitHub repository or organization URL |
+| `ACCESS_TOKEN` | String | Yes | - | GitHub PAT with `repo` and `workflow` scopes ([see below](#how-to-get-a-personal-access-token)) |
+| `RUNNER_NAME` | String | No | Container hostname | Custom runner name |
+| `LABELS` | String | No | `self-hosted,linux,x64,docker` | Comma-separated labels for workflow targeting |
+| `DOCKER_GID` | Integer | No | `999` | Host Docker group ID ([see below](#getting-docker-group-id)) |
+| `RUNNER_ARCH` | String | No | `x64` | Runner architecture (`x64` or `arm64`) |
+| `ENABLE_DIND` | Boolean | No | `false` | Enable Docker-in-Docker mode |
 
-**Wichtig:** Ermitteln Sie zuerst die Docker Group ID Ihres Host-Systems:
+### Configuration Methods
+
+#### Using `.env` files (Recommended)
+
+```env
+RUNNER_SCOPE=repos  # or "orgs" for organization-level
+REPO_URL=https://github.com/ORGANIZATION/REPO
+ACCESS_TOKEN=ghp_your_token_here
+RUNNER_NAME=my-runner
+LABELS=docker,linux
+DOCKER_GID=999
+RUNNER_ARCH=x64  # Optional: auto-detected, specify for arm64
+ENABLE_DIND=false  # Set to true for Docker-in-Docker mode
+```
 
 ```bash
-# Auf Linux/Mac:
-getent group docker | cut -d: -f3
-
-# Das Ergebnis (z.B. 999) verwenden Sie als DOCKER_GID
+docker-compose --env-file .env-repo up -d
 ```
+
+#### Using docker-compose with inline variables
+
+```bash
+ENABLE_DIND=true docker-compose --env-file .env-repo up -d
+```
+
+#### Using docker run directly
+
+```bash
+docker run -d -e RUNNER_SCOPE=repos -e REPO_URL=https://github.com/owner/repo \
+  -e ACCESS_TOKEN=ghp_xxx -e RUNNER_NAME=my-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/shopping2go/gh-self-hosted-runner-docker:latest
+```
+
+### 🔑 How to Get a Personal Access Token
+
+Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` and `workflow` scopes. See: [GitHub documentation](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)
+
+### 🐳 Getting Docker Group ID
+
+```bash
+getent group docker | cut -d: -f3  # Output: 999
+```
+
+### Docker-in-Docker Mode
+
+Set `ENABLE_DIND=true` to run a separate Docker daemon inside the container (requires privileged mode). Default is `false` (uses host Docker socket).
+
+---
+
+## 🚀 Quick Start
 
 ### 1. Configure your environment
 
-#### 🧱 Repository Runner – `.env-repo`
-
-```env
-RUNNER_SCOPE=repos
-REPO_URL=https://github.com/ORGANIZATION/REPO
-ACCESS_TOKEN=<your_repo_token>
-RUNNER_NAME=repo-runner
-LABELS=docker,repo
-DOCKER_GID=999
-```
-
-#### 🏢 Organization Runner – `.env-org`
-
-```env
-RUNNER_SCOPE=orgs
-REPO_URL=https://github.com/ORGANIZATION
-ACCESS_TOKEN=<your_org_token>
-RUNNER_NAME=org-runner
-LABELS=docker,org
-DOCKER_GID=999
-```
+Choose and configure one of the methods described in the [Environment Variables](#environment-variables) section above.
 
 ### 2. Build & start the runner
+
 ```bash
-# For repository-level runner
+# For repository runner
 docker-compose --env-file .env-repo up -d
 
-# For organization-level runner
+# For organization runner
 docker-compose --env-file .env-org up -d
 ```
+
 ### 3. Verify Runner Registration
 
-Nach dem Start sollte der Runner in GitHub sichtbar sein:
+After startup, the runner should be visible in GitHub:
 - **Repository:** `Settings` → `Actions` → `Runners`
 - **Organization:** `Settings` → `Actions` → `Runners`
 
-Der Runner sollte als "Idle" oder "Active" angezeigt werden.
+The runner should be displayed as "Idle" or "Active".
 
 ---
 
@@ -146,69 +172,6 @@ The Docker image comes with several essential tools pre-installed:
 
 ---
 
-## 🐳 Docker-in-Docker (dind) via ENABLE_DIND
-
-The runner supports optional Docker-in-Docker functionality via the `ENABLE_DIND` environment variable, which is disabled by default.
-
-### Enabling Docker-in-Docker
-
-Set `ENABLE_DIND=true` in your `.env` file or docker-compose configuration:
-
-#### Option 1: Via .env file
-
-```env
-# In .env-repo or .env-org
-ENABLE_DIND=true
-```
-
-#### Option 2: Via docker-compose
-
-```bash
-# Start runner with Docker-in-Docker enabled
-ENABLE_DIND=true docker-compose --env-file .env-repo up -d
-```
-
-#### Option 3: Via environment variable at runtime
-
-```bash
-docker run -e ENABLE_DIND=true ... your-runner-image
-```
-
-### When Docker-in-Docker is enabled
-
-When `ENABLE_DIND=true`, the runner will:
-1. Start the Docker daemon automatically inside the container
-2. Wait until Docker is ready before starting the runner
-3. Allow workflows to run Docker commands directly
-
-### Verifying Docker is available
-
-Your workflows can verify Docker is running with:
-
-```yaml
-jobs:
-  my-docker-job:
-    runs-on: [self-hosted, docker]
-    steps:
-      - name: Check Docker status
-        run: docker info
-      
-      - name: Run Docker commands
-        run: docker run --rm hello-world
-```
-
-### When to Use Docker-in-Docker
-
-Enable dind when your workflows need to:
-- Build Docker images
-- Run containers as part of tests
-- Push images to container registries
-- Use Docker Compose for multi-container setups
-
-**Important:** When using `ENABLE_DIND=true`, the container requires privileged mode. The provided `docker-compose.yml` already includes the necessary configuration.
-
----
-
 ## 🗂️ File Overview
 
 ```text
@@ -223,20 +186,6 @@ Enable dind when your workflows need to:
 ├── .env-repo           # Environment file for repository runner
 └── LICENSE
 ```
-
----
-
-## ⚙️ Customization Options
-
-| Variable       | Description                        | Example                        |
-|---------------|------------------------------------|---------------------------------|
-| RUNNER_SCOPE  | Runner type (repos or orgs)        | repos                          |
-| REPO_URL      | GitHub URL for repo or org         | https://github.com/myorg/myrepo |
-| ACCESS_TOKEN  | Personal Access Token              | ghp_abc123...                   |
-| RUNNER_NAME   | Custom runner name                 | ci-runner-1                     |
-| LABELS        | Comma-separated labels             | linux,docker,self-hosted        |
-| DOCKER_GID    | Host Docker group ID               | 999                             |
-| ENABLE_DIND   | Enable Docker-in-Docker (true/false) | true                          |
 
 ---
 
