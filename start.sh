@@ -157,8 +157,19 @@ cleanup() {
     fi
 
     if [[ -n "$DOCKERD_PID" ]]; then
-        echo "Stopping Docker daemon..."
-        sudo kill "$DOCKERD_PID" 2>/dev/null || true
+        echo "Stopping Docker daemon gracefully..."
+        sudo kill -TERM "$DOCKERD_PID" 2>/dev/null || true
+
+        local docker_timeout=30
+        while [[ $docker_timeout -gt 0 ]] && sudo kill -0 "$DOCKERD_PID" 2>/dev/null; do
+            sleep 1
+            ((docker_timeout--))
+        done
+
+        if sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
+            echo "Forcibly killing Docker daemon."
+            sudo kill -KILL "$DOCKERD_PID" 2>/dev/null || true
+        fi
     fi
 
     echo "Unregistering runner from GitHub..."
@@ -182,13 +193,14 @@ fi
 if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
     
-    # Create secure log directory
-    DOCKERD_LOG_DIR="/github/workspace/.dockerd-logs"
-    mkdir -p "$DOCKERD_LOG_DIR"
-    chmod 700 "$DOCKERD_LOG_DIR"
+    # Create secure log directory outside the workspace to avoid exposing daemon logs
+    DOCKERD_LOG_DIR="/var/log/dockerd"
+    sudo mkdir -p "$DOCKERD_LOG_DIR"
+    sudo chmod 700 "$DOCKERD_LOG_DIR"
     DOCKERD_LOG="$DOCKERD_LOG_DIR/dockerd.log"
     
-    sudo dockerd 2>&1 | tee "$DOCKERD_LOG" &
+    # Start dockerd with security-hardening options
+    sudo dockerd --iptables=true --storage-driver="${DOCKER_STORAGE_DRIVER:-overlay2}" >>"$DOCKERD_LOG" 2>&1 &
     DOCKERD_PID=$!
     
     # Wait for Docker daemon to be ready
@@ -199,16 +211,16 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         attempt=$((attempt + 1))
         
         # Check if dockerd process is still running
-        if ! kill -0 "$DOCKERD_PID" 2>/dev/null; then
+        if ! sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
             echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
-            cat "$DOCKERD_LOG" 2>/dev/null || true
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || true
             exit 1
         fi
         
         if [[ $attempt -ge $max_attempts ]]; then
             echo "ERROR: Docker daemon failed to start after ${max_attempts} seconds"
             echo "Docker daemon logs:"
-            cat "$DOCKERD_LOG" 2>/dev/null || true
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || true
             exit 1
         fi
         sleep 1

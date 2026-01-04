@@ -146,9 +146,9 @@ The Docker image comes with several essential tools pre-installed:
 
 ---
 
-## 🐳 Docker-in-Docker (dind) On-Demand
+## 🐳 Docker-in-Docker (dind) via ENABLE_DIND
 
-The self-hosted runner supports Docker-in-Docker (dind) for workflows that need to run Docker commands. Docker is **not enabled globally** by default—you can enable it on-demand via the `ENABLE_DIND` environment variable.
+The runner supports optional Docker-in-Docker functionality via the `ENABLE_DIND` environment variable, which is disabled by default.
 
 ### Enabling Docker-in-Docker
 
