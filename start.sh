@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Global variable for Docker daemon PID (needed for cleanup function)
+DOCKERD_PID=""
+
 # --- Validate the RUNNER_SCOPE variable ---
 validate_runner_scope() {
     # Default to 'repos' if invalid
@@ -160,10 +163,10 @@ cleanup() {
         echo "Stopping Docker daemon gracefully..."
         sudo kill -TERM "$DOCKERD_PID" 2>/dev/null || true
 
-        local docker_timeout=30
-        while [[ $docker_timeout -gt 0 ]] && sudo kill -0 "$DOCKERD_PID" 2>/dev/null; do
+        local dockerShutdownTimeout=30
+        while [[ $dockerShutdownTimeout -gt 0 ]] && sudo kill -0 "$DOCKERD_PID" 2>/dev/null; do
             sleep 1
-            ((docker_timeout--))
+            ((dockerShutdownTimeout--))
         done
 
         if sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
@@ -203,24 +206,37 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     sudo dockerd --iptables=true --storage-driver="${DOCKER_STORAGE_DRIVER:-overlay2}" >>"$DOCKERD_LOG" 2>&1 &
     DOCKERD_PID=$!
     
+    # Helper function to read Docker daemon logs
+    read_dockerd_log() {
+        if command -v sudo >/dev/null 2>&1; then
+            if ! sudo cat "$DOCKERD_LOG" 2>/dev/null; then
+                echo "⚠️  Unable to read Docker daemon log file at '$DOCKERD_LOG' with sudo."
+            fi
+        elif [ -r "$DOCKERD_LOG" ]; then
+            cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file at '$DOCKERD_LOG'."
+        else
+            echo "⚠️  Docker daemon log file is not readable at '$DOCKERD_LOG'."
+        fi
+    }
+    
     # Wait for Docker daemon to be ready
     echo "Waiting for Docker daemon to be ready..."
-    max_attempts=30
+    maxAttempts=30
     attempt=0
     while ! docker version --format '{{.Server.Version}}' >/dev/null 2>&1; do
         attempt=$((attempt + 1))
         
         # Check if dockerd process is still running
         if ! sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
-            echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
-            sudo cat "$DOCKERD_LOG" 2>/dev/null || true
+            echo "ERROR: Docker daemon process exited unexpectedly. Check logs (if accessible):"
+            read_dockerd_log
             exit 1
         fi
         
-        if [[ $attempt -ge $max_attempts ]]; then
-            echo "ERROR: Docker daemon failed to start after ${max_attempts} seconds"
-            echo "Docker daemon logs:"
-            sudo cat "$DOCKERD_LOG" 2>/dev/null || true
+        if [[ $attempt -ge $maxAttempts ]]; then
+            echo "ERROR: Docker daemon failed to start after ${maxAttempts} seconds"
+            echo "Docker daemon logs (if accessible):"
+            read_dockerd_log
             exit 1
         fi
         sleep 1

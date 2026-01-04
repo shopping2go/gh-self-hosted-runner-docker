@@ -34,7 +34,8 @@ services:
 
     # Required for ENABLE_DIND=true to run Docker daemon inside the container
     # WARNING: Privileged mode gives the container full access to the host!
-    # Only enabled when ENABLE_DIND is true
+    # Note: Docker Compose interprets string "true"/"false" as boolean values
+    # Set ENABLE_DIND=true (without quotes) in your .env file to enable
     privileged: ${ENABLE_DIND:-false}
 
     # Security options (note: no-new-privileges may conflict with privileged mode)
