@@ -161,6 +161,13 @@ cleanup() {
 
     if [[ -n "$DOCKERD_PID" ]]; then
         echo "Stopping Docker daemon gracefully..."
+        
+        # Stop all running containers first for clean shutdown
+        if command -v docker >/dev/null 2>&1; then
+            echo "Stopping all running containers..."
+            docker stop $(docker ps -q) 2>/dev/null || true
+        fi
+        
         sudo kill -TERM "$DOCKERD_PID" 2>/dev/null || true
 
         local dockerShutdownTimeout=30
@@ -202,22 +209,29 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     sudo chmod 700 "$DOCKERD_LOG_DIR"
     DOCKERD_LOG="$DOCKERD_LOG_DIR/dockerd.log"
     
-    # Start dockerd with security-hardening options
-    sudo dockerd --iptables=true --storage-driver="${DOCKER_STORAGE_DRIVER:-overlay2}" >>"$DOCKERD_LOG" 2>&1 &
-    DOCKERD_PID=$!
+    # Use a pidfile so we can capture the actual dockerd PID instead of the sudo PID
+    DOCKERD_PIDFILE="/var/run/dockerd.pid"
+    sudo rm -f "$DOCKERD_PIDFILE"
     
-    # Helper function to read Docker daemon logs
-    read_dockerd_log() {
-        if command -v sudo >/dev/null 2>&1; then
-            if ! sudo cat "$DOCKERD_LOG" 2>/dev/null; then
-                echo "⚠️  Unable to read Docker daemon log file at '$DOCKERD_LOG' with sudo."
-            fi
-        elif [ -r "$DOCKERD_LOG" ]; then
-            cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file at '$DOCKERD_LOG'."
-        else
-            echo "⚠️  Docker daemon log file is not readable at '$DOCKERD_LOG'."
+    # Start dockerd with security-hardening options
+    sudo dockerd --iptables=true --icc=false --storage-driver=overlay2 --pidfile="$DOCKERD_PIDFILE" >>"$DOCKERD_LOG" 2>&1 &
+    
+    # Resolve the actual Docker daemon PID from the pidfile
+    DOCKERD_PID=""
+    for i in {1..30}; do
+        DOCKERD_PID=$(sudo cat "$DOCKERD_PIDFILE" 2>/dev/null || true)
+        if [[ -n "$DOCKERD_PID" ]]; then
+            break
         fi
-    }
+        sleep 1
+    done
+
+    if [[ -z "$DOCKERD_PID" ]]; then
+        echo "ERROR: Failed to obtain Docker daemon PID from '$DOCKERD_PIDFILE'."
+        echo "Docker daemon logs:"
+        sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+        exit 1
+    fi
     
     # Wait for Docker daemon to be ready
     echo "Waiting for Docker daemon to be ready..."
@@ -228,15 +242,15 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         
         # Check if dockerd process is still running
         if ! sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
-            echo "ERROR: Docker daemon process exited unexpectedly. Check logs (if accessible):"
-            read_dockerd_log
+            echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
             exit 1
         fi
         
         if [[ $attempt -ge $maxAttempts ]]; then
             echo "ERROR: Docker daemon failed to start after ${maxAttempts} seconds"
-            echo "Docker daemon logs (if accessible):"
-            read_dockerd_log
+            echo "Docker daemon logs:"
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
             exit 1
         fi
         sleep 1
