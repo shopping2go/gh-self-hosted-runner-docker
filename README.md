@@ -240,11 +240,11 @@ docker-compose --env-file .env-org up -d
 
 ### 3. Verify Runner Registration
 
-Nach dem Start sollte der Runner in GitHub sichtbar sein:
+After startup, the runner should be visible in GitHub:
 - **Repository:** `Settings` → `Actions` → `Runners`
 - **Organization:** `Settings` → `Actions` → `Runners`
 
-Der Runner sollte als "Idle" oder "Active" angezeigt werden.
+The runner should be displayed as "Idle" or "Active".
 
 ---
 
