@@ -179,7 +179,7 @@ else
 fi
 
 # Start Docker daemon if ENABLE_DIND is set to true
-if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND}" == "1" ]]; then
+if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND,,}" == "1" ]]; then
     echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
     sudo dockerd &
     DOCKERD_PID=$!
@@ -188,7 +188,7 @@ if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND}" == "1" ]]; then
     echo "Waiting for Docker daemon to be ready..."
     max_attempts=30
     attempt=0
-    while ! docker info >/dev/null 2>&1; do
+    while ! docker version --format '{{.Server.Version}}' >/dev/null 2>&1; do
         attempt=$((attempt + 1))
         if [[ $attempt -ge $max_attempts ]]; then
             echo "ERROR: Docker daemon failed to start after ${max_attempts} seconds"
