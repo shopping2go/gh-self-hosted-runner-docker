@@ -73,6 +73,8 @@ jobs:
           echo "✅ Docker-in-Docker is working!"
 
   # Example: Job that needs Docker for container builds
+  # This job demonstrates a practical use case and runs independently
+  # It uses the recommended action approach
   build-example:
     runs-on: [self-hosted, docker]
     steps:
@@ -86,8 +88,15 @@ jobs:
       - name: Build a test image
         run: |
           echo "🏗️ Building test image..."
-          docker build -t test-image:latest .
-          echo "✅ Image built successfully!"
+          # Check if Dockerfile exists before building
+          if [ -f Dockerfile ]; then
+            docker build -t test-image:latest .
+            echo "✅ Image built successfully!"
+          else
+            echo "⚠️ No Dockerfile found, creating a simple test image..."
+            echo "FROM alpine:latest" | docker build -t test-image:latest -
+            echo "✅ Test image created successfully!"
+          fi
 
       - name: Verify the image
         run: |
