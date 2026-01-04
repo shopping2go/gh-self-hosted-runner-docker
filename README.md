@@ -53,7 +53,7 @@ All configuration is done via environment variables, which can be set in `.env` 
 
 | Variable | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `RUNNER_SCOPE` | String | Yes | `repos` | Runner scope: `repos` or `orgs` |
+| `RUNNER_SCOPE` | String | No | `repos` | Runner scope: `repos` or `orgs` |
 | `REPO_URL` | String | Yes | - | GitHub repository or organization URL |
 | `ACCESS_TOKEN` | String | Yes | - | GitHub PAT with `repo` and `workflow` scopes ([see below](#how-to-get-a-personal-access-token)) |
 | `RUNNER_NAME` | String | No | Container hostname | Custom runner name |
@@ -73,7 +73,8 @@ ACCESS_TOKEN=ghp_your_token_here
 RUNNER_NAME=my-runner
 LABELS=docker,linux
 DOCKER_GID=999
-ENABLE_DIND=false
+RUNNER_ARCH=x64  # Optional: auto-detected, specify for arm64
+ENABLE_DIND=false  # Set to true for Docker-in-Docker mode
 ```
 
 ```bash
@@ -99,7 +100,7 @@ docker run -d -e RUNNER_SCOPE=repos -e REPO_URL=https://github.com/owner/repo \
 
 Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` and `workflow` scopes. See: [GitHub documentation](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)
 
-### Getting Docker Group ID
+### 🐳 Getting Docker Group ID
 
 ```bash
 getent group docker | cut -d: -f3  # Output: 999
