@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Global variable for Docker daemon PID (needed for cleanup function)
+DOCKERD_PID=""
+
 # --- Validate the RUNNER_SCOPE variable ---
 validate_runner_scope() {
     # Default to 'repos' if invalid
@@ -156,6 +159,29 @@ cleanup() {
         kill "$RUNNER_PID" 2>/dev/null || true
     fi
 
+    if [[ -n "$DOCKERD_PID" ]]; then
+        echo "Stopping Docker daemon gracefully..."
+        
+        # Stop all running containers first for clean shutdown
+        if command -v docker >/dev/null 2>&1; then
+            echo "Stopping all running containers..."
+            docker stop $(docker ps -q) 2>/dev/null || true
+        fi
+        
+        sudo kill -TERM "$DOCKERD_PID" 2>/dev/null || true
+
+        local dockerShutdownTimeout=30
+        while [[ $dockerShutdownTimeout -gt 0 ]] && sudo kill -0 "$DOCKERD_PID" 2>/dev/null; do
+            sleep 1
+            ((dockerShutdownTimeout--))
+        done
+
+        if sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
+            echo "Forcibly killing Docker daemon."
+            sudo kill -KILL "$DOCKERD_PID" 2>/dev/null || true
+        fi
+    fi
+
     echo "Unregistering runner from GitHub..."
     ./config.sh remove --unattended --token ${RUNNER_TOKEN} 2>/dev/null || remove_runner
 }
@@ -171,6 +197,68 @@ if [[ -n "$DOCKER_GID" ]]; then
     echo "Runner user added to docker group (GID: $DOCKER_GID)"
 else
     echo "DOCKER_GID not set. Skipping docker group setup."
+fi
+
+# Start Docker daemon if ENABLE_DIND is set to true
+if [[ "${ENABLE_DIND,,}" == "true" ]]; then
+    echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
+    
+    # Create secure log directory outside the workspace to avoid exposing daemon logs
+    DOCKERD_LOG_DIR="/var/log/dockerd"
+    sudo mkdir -p "$DOCKERD_LOG_DIR"
+    sudo chmod 700 "$DOCKERD_LOG_DIR"
+    DOCKERD_LOG="$DOCKERD_LOG_DIR/dockerd.log"
+    
+    # Use a pidfile so we can capture the actual dockerd PID instead of the sudo PID
+    DOCKERD_PIDFILE="/var/run/dockerd.pid"
+    sudo rm -f "$DOCKERD_PIDFILE"
+    
+    # Start dockerd with security-hardening options
+    sudo dockerd --iptables=true --icc=false --storage-driver=overlay2 --pidfile="$DOCKERD_PIDFILE" >>"$DOCKERD_LOG" 2>&1 &
+    
+    # Resolve the actual Docker daemon PID from the pidfile
+    DOCKERD_PID=""
+    for i in {1..30}; do
+        DOCKERD_PID=$(sudo cat "$DOCKERD_PIDFILE" 2>/dev/null || true)
+        if [[ -n "$DOCKERD_PID" ]]; then
+            break
+        fi
+        sleep 1
+    done
+
+    if [[ -z "$DOCKERD_PID" ]]; then
+        echo "ERROR: Failed to obtain Docker daemon PID from '$DOCKERD_PIDFILE'."
+        echo "Docker daemon logs:"
+        sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+        exit 1
+    fi
+    
+    # Wait for Docker daemon to be ready
+    echo "Waiting for Docker daemon to be ready..."
+    maxAttempts=30
+    attempt=0
+    while ! docker version --format '{{.Server.Version}}' >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        
+        # Check if dockerd process is still running
+        if ! sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
+            echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+            exit 1
+        fi
+        
+        if [[ $attempt -ge $maxAttempts ]]; then
+            echo "ERROR: Docker daemon failed to start after ${maxAttempts} seconds"
+            echo "Docker daemon logs:"
+            sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "✅ Docker daemon is running and ready!"
+else
+    echo "ℹ️  Docker daemon not started (ENABLE_DIND=${ENABLE_DIND:-false})"
+    echo "   Set ENABLE_DIND=true to start the Docker daemon inside the container"
 fi
 
 # Get a fresh runner token at container startup

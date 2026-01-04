@@ -146,10 +146,76 @@ The Docker image comes with several essential tools pre-installed:
 
 ---
 
+## 🐳 Docker-in-Docker (dind) via ENABLE_DIND
+
+The runner supports optional Docker-in-Docker functionality via the `ENABLE_DIND` environment variable, which is disabled by default.
+
+### Enabling Docker-in-Docker
+
+Set `ENABLE_DIND=true` in your `.env` file or docker-compose configuration:
+
+#### Option 1: Via .env file
+
+```env
+# In .env-repo or .env-org
+ENABLE_DIND=true
+```
+
+#### Option 2: Via docker-compose
+
+```bash
+# Start runner with Docker-in-Docker enabled
+ENABLE_DIND=true docker-compose --env-file .env-repo up -d
+```
+
+#### Option 3: Via environment variable at runtime
+
+```bash
+docker run -e ENABLE_DIND=true ... your-runner-image
+```
+
+### When Docker-in-Docker is enabled
+
+When `ENABLE_DIND=true`, the runner will:
+1. Start the Docker daemon automatically inside the container
+2. Wait until Docker is ready before starting the runner
+3. Allow workflows to run Docker commands directly
+
+### Verifying Docker is available
+
+Your workflows can verify Docker is running with:
+
+```yaml
+jobs:
+  my-docker-job:
+    runs-on: [self-hosted, docker]
+    steps:
+      - name: Check Docker status
+        run: docker info
+      
+      - name: Run Docker commands
+        run: docker run --rm hello-world
+```
+
+### When to Use Docker-in-Docker
+
+Enable dind when your workflows need to:
+- Build Docker images
+- Run containers as part of tests
+- Push images to container registries
+- Use Docker Compose for multi-container setups
+
+**Important:** When using `ENABLE_DIND=true`, the container requires privileged mode. The provided `docker-compose.yml` already includes the necessary configuration.
+
+---
+
 ## 🗂️ File Overview
 
 ```text
 .
+├── .github/
+│   └── workflows/
+│       └── docker-ghcr.yml   # CI/CD workflow for building and pushing Docker images
 ├── Dockerfile          # Image definition
 ├── docker-compose.yml  # Container setup
 ├── start.sh            # Runner bootstrap & token refresh logic
@@ -170,6 +236,7 @@ The Docker image comes with several essential tools pre-installed:
 | RUNNER_NAME   | Custom runner name                 | ci-runner-1                     |
 | LABELS        | Comma-separated labels             | linux,docker,self-hosted        |
 | DOCKER_GID    | Host Docker group ID               | 999                             |
+| ENABLE_DIND   | Enable Docker-in-Docker (true/false) | true                          |
 
 ---
 

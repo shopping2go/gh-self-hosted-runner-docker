@@ -23,13 +23,13 @@ RUN apt-get update && apt-get install -y \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI for Docker-in-Docker support and GitHub CLI for direct GitHub API interaction
+# Install Docker (CLI + daemon) for Docker-in-Docker support and GitHub CLI for direct GitHub API interaction
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
     && apt-get update \
-    && apt-get install -y docker-ce-cli gh \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io gh \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a dedicated user for the GitHub Actions runner
@@ -79,7 +79,8 @@ ENV \
     RUNNER_NAME="docker-runner" \
     LABELS="self-hosted,docker" \
     RUNNER_ARCH="x64" \
-    DOCKER_GID="999"
+    DOCKER_GID="999" \
+    ENABLE_DIND="false"
 
 # Set the default command to launch the runner
 CMD ["/github/workspace/start.sh"]
