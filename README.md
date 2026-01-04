@@ -146,10 +146,76 @@ The Docker image comes with several essential tools pre-installed:
 
 ---
 
+## 🐳 Docker-in-Docker (dind) On-Demand
+
+The self-hosted runner supports Docker-in-Docker (dind) for workflows that need to run Docker commands. Docker is **not enabled globally** by default—you can enable it on-demand for specific jobs that require it.
+
+### Recommended Approach: Using `docker/setup-docker` Action
+
+Add this step at the start of any job that needs Docker:
+
+```yaml
+jobs:
+  my-docker-job:
+    runs-on: [self-hosted, docker]
+    steps:
+      - name: Setup Docker (on-demand)
+        uses: docker/setup-docker@v3
+      
+      - name: Check Docker status
+        run: docker info
+      
+      - name: Run Docker commands
+        run: docker run --rm hello-world
+```
+
+### Alternative: Manual Docker Setup
+
+For environments where the action approach doesn't work, you can manually install and start Docker:
+
+```yaml
+jobs:
+  my-docker-job:
+    runs-on: [self-hosted, docker]
+    steps:
+      - name: Ensure Docker is installed and running (on-demand)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
+      
+      - name: Check Docker status
+        run: docker info
+      
+      - name: Run Docker commands
+        run: docker run --rm hello-world
+```
+
+### Example Workflow
+
+See [`.github/workflows/example-dind-on-demand.yml`](.github/workflows/example-dind-on-demand.yml) for a complete example workflow demonstrating both approaches.
+
+### When to Use Docker-in-Docker
+
+Use dind on-demand when your workflow needs to:
+- Build Docker images
+- Run containers as part of tests
+- Push images to container registries
+- Use Docker Compose for multi-container setups
+
+**Note:** The Docker socket is mounted from the host when using the provided `docker-compose.yml`, so Docker commands will work once the daemon is available.
+
+---
+
 ## 🗂️ File Overview
 
 ```text
 .
+├── .github/
+│   └── workflows/
+│       ├── docker-ghcr.yml              # CI/CD workflow for building and pushing Docker images
+│       └── example-dind-on-demand.yml   # Example workflow for Docker-in-Docker on-demand
 ├── Dockerfile          # Image definition
 ├── docker-compose.yml  # Container setup
 ├── start.sh            # Runner bootstrap & token refresh logic
