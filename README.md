@@ -39,7 +39,7 @@
 
 - Docker ≥ **20.10**
 - Docker Compose ≥ **1.29**
-- GitHub **Personal Access Token** (PAT) with `repo` and `workflow` scopes ([see instructions below](#-how-to-get-a-personal-access-token))
+- GitHub **Personal Access Token** (PAT) with `repo` and `workflow` scopes ([see instructions below](#how-to-get-a-personal-access-token))
 - Linux host recommended (for Docker socket access)
 - More info: [GitHub documentation for self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners)
 
@@ -55,7 +55,7 @@ All configuration is done via environment variables, which can be set in `.env` 
 |----------|------|----------|---------|-------------|
 | `RUNNER_SCOPE` | String | Yes | `repos` | Runner scope: `repos` for repository-level or `orgs` for organization-level |
 | `REPO_URL` | String | Yes | - | Full GitHub URL to repository (e.g., `https://github.com/owner/repo`) or organization (e.g., `https://github.com/owner`) |
-| `ACCESS_TOKEN` | String | Yes | - | GitHub Personal Access Token with `repo` and `workflow` scopes ([see instructions below](#-how-to-get-a-personal-access-token)) |
+| `ACCESS_TOKEN` | String | Yes | - | GitHub Personal Access Token with `repo` and `workflow` scopes ([see instructions below](#how-to-get-a-personal-access-token)) |
 | `RUNNER_NAME` | String | No | Container hostname | Custom name for this runner instance (visible in GitHub Settings → Actions → Runners) |
 | `LABELS` | String | No | `self-hosted,linux,x64,docker` | Comma-separated list of labels for workflow targeting (e.g., `docker,linux,custom`) |
 | `DOCKER_GID` | Integer | No | `999` | Docker group ID from the host system. Must match host's docker group for Docker socket access ([see instructions below](#getting-docker-group-id)) |
@@ -226,7 +226,7 @@ LABELS=docker,team-b,linux
 
 ### 1. Configure your environment
 
-Choose and configure one of the methods described in the [Environment Variables](#%EF%B8%8F-environment-variables) section above.
+Choose and configure one of the methods described in the [Environment Variables](#environment-variables) section above.
 
 ### 2. Build & start the runner
 
