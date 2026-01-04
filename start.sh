@@ -214,7 +214,8 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     sudo rm -f "$DOCKERD_PIDFILE"
     
     # Start dockerd with security-hardening options
-    sudo dockerd --iptables=true --icc=false --storage-driver=overlay2 --pidfile="$DOCKERD_PIDFILE" >>"$DOCKERD_LOG" 2>&1 &
+    # Wrap the entire command including redirection in sudo bash -c to ensure proper permissions
+    sudo bash -c "dockerd --iptables=true --icc=false --storage-driver=overlay2 --pidfile=\"$DOCKERD_PIDFILE\" >> \"$DOCKERD_LOG\" 2>&1 &"
     
     # Resolve the actual Docker daemon PID from the pidfile
     DOCKERD_PID=""
