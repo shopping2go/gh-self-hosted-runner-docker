@@ -19,6 +19,8 @@ services:
       LABELS: ${LABELS:-self-hosted,docker}
       DOCKER_GID: ${DOCKER_GID:-999}
       RUNNER_ARCH: ${RUNNER_ARCH:-x64}
+      # Set to 'true' to start Docker daemon inside the container (Docker-in-Docker)
+      ENABLE_DIND: ${ENABLE_DIND:-false}
 
     # Mount the Docker socket to enable Docker-in-Docker workflows
     volumes:

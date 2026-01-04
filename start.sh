@@ -156,6 +156,11 @@ cleanup() {
         kill "$RUNNER_PID" 2>/dev/null || true
     fi
 
+    if [[ -n "$DOCKERD_PID" ]]; then
+        echo "Stopping Docker daemon..."
+        sudo kill "$DOCKERD_PID" 2>/dev/null || true
+    fi
+
     echo "Unregistering runner from GitHub..."
     ./config.sh remove --unattended --token ${RUNNER_TOKEN} 2>/dev/null || remove_runner
 }
@@ -171,6 +176,30 @@ if [[ -n "$DOCKER_GID" ]]; then
     echo "Runner user added to docker group (GID: $DOCKER_GID)"
 else
     echo "DOCKER_GID not set. Skipping docker group setup."
+fi
+
+# Start Docker daemon if ENABLE_DIND is set to true
+if [[ "${ENABLE_DIND,,}" == "true" || "${ENABLE_DIND}" == "1" ]]; then
+    echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
+    sudo dockerd &
+    DOCKERD_PID=$!
+    
+    # Wait for Docker daemon to be ready
+    echo "Waiting for Docker daemon to be ready..."
+    max_attempts=30
+    attempt=0
+    while ! docker info >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        if [[ $attempt -ge $max_attempts ]]; then
+            echo "ERROR: Docker daemon failed to start after ${max_attempts} seconds"
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "✅ Docker daemon is running and ready!"
+else
+    echo "ℹ️  Docker daemon not started (ENABLE_DIND=${ENABLE_DIND:-false})"
+    echo "   Set ENABLE_DIND=true to start the Docker daemon inside the container"
 fi
 
 # Get a fresh runner token at container startup
