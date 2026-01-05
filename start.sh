@@ -264,7 +264,8 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         # Try to detect if we're running in privileged mode by checking capabilities
         if [[ -f /proc/self/status ]]; then
             CAP_EFF=$(grep "CapEff:" /proc/self/status 2>/dev/null | awk '{print $2}')
-            # Full capabilities would be ffffffffffffffff or similar high value
+            # Full capabilities for privileged containers is typically 0000003fffffffff (hex)
+            # which equals 274877906943 in decimal. Lower values indicate missing capabilities.
             if [[ -n "$CAP_EFF" ]] && [[ "$CAP_EFF" != "0000003fffffffff" ]] && [[ $(printf "%d" "0x$CAP_EFF" 2>/dev/null || echo 0) -lt 274877906943 ]]; then
                 MISSING_CAPABILITIES="mount"
             fi
@@ -297,8 +298,9 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         echo "      github-runner:"
         echo "        privileged: true"
         echo ""
-        echo "  Option 3: Set ENABLE_DIND=true in your .env file"
-        echo "    (The docker-compose.yml is already configured to set privileged: \${ENABLE_DIND:-false})"
+        echo "  Note: The included docker-compose.yml already sets 'privileged: \${ENABLE_DIND:-false}',"
+        echo "        so if ENABLE_DIND=true is set, privileged mode should be enabled automatically."
+        echo "        If you're seeing this error, your container may have been started differently."
         echo ""
         echo "⚠️  Security Note: Privileged mode gives the container full access to the host."
         echo "   Only use this with trusted workloads and in isolated environments."
