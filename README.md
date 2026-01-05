@@ -110,6 +110,8 @@ getent group docker | cut -d: -f3  # Output: 999
 
 Set `ENABLE_DIND=true` to run a separate Docker daemon inside the container (requires privileged mode). Default is `false` (uses host Docker socket).
 
+**Storage Driver:** The daemon will attempt to use the `overlay2` storage driver for optimal performance. If `overlay2` is not supported (e.g., due to kernel restrictions), it will automatically fall back to the `vfs` driver, which is slower but more compatible.
+
 ---
 
 ## 🚀 Quick Start
