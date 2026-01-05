@@ -108,9 +108,42 @@ getent group docker | cut -d: -f3  # Output: 999
 
 ### Docker-in-Docker Mode
 
-Set `ENABLE_DIND=true` to run a separate Docker daemon inside the container (requires privileged mode). Default is `false` (uses host Docker socket).
+Set `ENABLE_DIND=true` to run a separate Docker daemon inside the container. Default is `false` (uses host Docker socket).
+
+**⚠️ Important: Privileged Mode Required**
+
+Docker-in-Docker **requires privileged mode** to function properly. The container needs elevated privileges to:
+- Create and manage storage drivers (overlay2 or vfs)
+- Set up network bridges and NAT rules via iptables
+- Mount filesystems for Docker's storage backend
+
+**How to enable privileged mode:**
+
+Using `docker run`:
+```bash
+docker run --privileged -e ENABLE_DIND=true ...
+```
+
+Using `docker-compose.yml` (already configured):
+```yaml
+services:
+  github-runner:
+    privileged: ${ENABLE_DIND:-false}  # Automatically enabled when ENABLE_DIND=true
+```
+
+The included `docker-compose.yml` is pre-configured to enable privileged mode when `ENABLE_DIND=true` is set in your environment.
+
+**Security Warning:** Privileged mode gives the container full access to the host system. Only use Docker-in-Docker with trusted workloads in isolated environments.
 
 **Storage Driver:** The daemon will attempt to use the `overlay2` storage driver for optimal performance. If `overlay2` is not supported (e.g., due to kernel restrictions), it will automatically fall back to the `vfs` driver, which is slower but more compatible.
+
+**Alternative: Host Docker Socket**
+
+If you don't need a full Docker daemon inside the container, you can mount the host's Docker socket instead:
+```bash
+docker run -v /var/run/docker.sock:/var/run/docker.sock:rw ...
+```
+This is the default behavior when `ENABLE_DIND=false`.
 
 ---
 

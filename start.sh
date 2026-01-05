@@ -3,6 +3,57 @@
 # Global variable for Docker daemon PID (needed for cleanup function)
 DOCKERD_PID=""
 
+# --- Print actionable guidance for Docker-in-Docker failures ---
+print_dind_troubleshooting() {
+    local log_file="$1"
+    local error_type="$2"
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "❌ Docker-in-Docker failed to start"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Check for specific error patterns in the log
+    if [[ -n "$log_file" ]] && [[ -f "$log_file" ]]; then
+        if sudo grep -q "you must be root\|Permission denied\|operation not permitted" "$log_file" 2>/dev/null; then
+            echo ""
+            echo "🔍 Detected: Permission/privilege errors"
+            echo ""
+            echo "The container is not running with sufficient privileges for Docker-in-Docker."
+            echo ""
+            echo "✅ Solution: Run the container with privileged mode enabled:"
+            echo ""
+            echo "   docker run --privileged ..."
+            echo ""
+            echo "   Or in docker-compose.yml:"
+            echo "     privileged: true"
+            echo ""
+        fi
+        
+        if sudo grep -q "iptables\|NAT chain\|network controller\|bridge" "$log_file" 2>/dev/null; then
+            echo ""
+            echo "🔍 Detected: Network/IPTables errors"
+            echo ""
+            echo "Docker cannot set up networking (NAT/iptables) without proper capabilities."
+            echo ""
+            echo "✅ Solution: Ensure the container has NET_ADMIN capability or privileged mode:"
+            echo ""
+            echo "   docker run --privileged ..."
+            echo "   # OR"
+            echo "   docker run --cap-add=NET_ADMIN --cap-add=SYS_ADMIN ..."
+            echo ""
+        fi
+    fi
+    
+    echo ""
+    echo "📚 For more information, see the README.md section on Docker-in-Docker mode."
+    echo ""
+    echo "💡 Alternative: If you don't need a full Docker daemon, mount the host socket:"
+    echo "   Set ENABLE_DIND=false and add: -v /var/run/docker.sock:/var/run/docker.sock:rw"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # --- Validate the RUNNER_SCOPE variable ---
 validate_runner_scope() {
     # Default to 'repos' if invalid
@@ -203,6 +254,65 @@ fi
 if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
     
+    # Check for required privileges before attempting to start Docker daemon
+    echo "Checking required privileges for Docker-in-Docker..."
+    
+    MISSING_CAPABILITIES=""
+    
+    # Check if we can perform privileged operations (test mount propagation capability)
+    if ! sudo mount --make-shared / 2>/dev/null; then
+        # Try to detect if we're running in privileged mode by checking capabilities
+        if [[ -f /proc/self/status ]]; then
+            CAP_EFF=$(grep "CapEff:" /proc/self/status 2>/dev/null | awk '{print $2}')
+            # Full capabilities would be ffffffffffffffff or similar high value
+            if [[ -n "$CAP_EFF" ]] && [[ "$CAP_EFF" != "0000003fffffffff" ]] && [[ $(printf "%d" "0x$CAP_EFF" 2>/dev/null || echo 0) -lt 274877906943 ]]; then
+                MISSING_CAPABILITIES="mount"
+            fi
+        fi
+    fi
+    
+    # Check if we can access iptables (required for Docker networking)
+    if ! sudo iptables -L -n >/dev/null 2>&1; then
+        if [[ -n "$MISSING_CAPABILITIES" ]]; then
+            MISSING_CAPABILITIES="$MISSING_CAPABILITIES, iptables"
+        else
+            MISSING_CAPABILITIES="iptables"
+        fi
+    fi
+    
+    # If missing critical capabilities, provide actionable error and exit
+    if [[ -n "$MISSING_CAPABILITIES" ]]; then
+        echo ""
+        echo "❌ ERROR: Docker-in-Docker requires privileged mode!"
+        echo ""
+        echo "Missing capabilities: $MISSING_CAPABILITIES"
+        echo ""
+        echo "To fix this issue, run the container with one of the following options:"
+        echo ""
+        echo "  Option 1: Using docker run:"
+        echo "    docker run --privileged ..."
+        echo ""
+        echo "  Option 2: Using docker-compose.yml:"
+        echo "    services:"
+        echo "      github-runner:"
+        echo "        privileged: true"
+        echo ""
+        echo "  Option 3: Set ENABLE_DIND=true in your .env file"
+        echo "    (The docker-compose.yml is already configured to set privileged: \${ENABLE_DIND:-false})"
+        echo ""
+        echo "⚠️  Security Note: Privileged mode gives the container full access to the host."
+        echo "   Only use this with trusted workloads and in isolated environments."
+        echo ""
+        echo "Alternative: If you don't need Docker-in-Docker, you can mount the host's"
+        echo "Docker socket instead by setting ENABLE_DIND=false (or removing it) and"
+        echo "adding this volume mount:"
+        echo "    -v /var/run/docker.sock:/var/run/docker.sock:rw"
+        echo ""
+        exit 1
+    fi
+    
+    echo "✅ Required privileges detected"
+    
     # Load overlay kernel module if available (required for overlay2 storage driver)
     echo "Checking overlay kernel module..."
     if sudo modprobe overlay 2>/dev/null; then
@@ -270,10 +380,12 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
                 echo "ERROR: Failed to start Docker daemon even with vfs storage driver."
                 echo "Docker daemon logs:"
                 sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+                print_dind_troubleshooting "$DOCKERD_LOG"
                 exit 1
             fi
         else
             echo "ERROR: Failed to obtain Docker daemon PID."
+            print_dind_troubleshooting "$DOCKERD_LOG"
             exit 1
         fi
     fi
@@ -317,6 +429,7 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
                     echo "ERROR: Failed to start Docker daemon even with vfs storage driver."
                     echo "Docker daemon logs:"
                     sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+                    print_dind_troubleshooting "$DOCKERD_LOG"
                     exit 1
                 fi
                 
@@ -325,6 +438,7 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
                 continue
             fi
             
+            print_dind_troubleshooting "$DOCKERD_LOG"
             exit 1
         fi
         
@@ -332,6 +446,7 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
             echo "ERROR: Docker daemon failed to start after ${maxAttempts} seconds"
             echo "Docker daemon logs:"
             sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+            print_dind_troubleshooting "$DOCKERD_LOG"
             exit 1
         fi
         sleep 1
