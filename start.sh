@@ -203,6 +203,14 @@ fi
 if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     echo "🐳 Starting Docker daemon (ENABLE_DIND=true)..."
     
+    # Load overlay kernel module if available (required for overlay2 storage driver)
+    echo "Checking overlay kernel module..."
+    if sudo modprobe overlay 2>/dev/null; then
+        echo "✅ Overlay kernel module loaded successfully"
+    else
+        echo "⚠️  Could not load overlay module (may already be loaded or not available)"
+    fi
+    
     # Create secure log directory outside the workspace to avoid exposing daemon logs
     DOCKERD_LOG_DIR="/var/log/dockerd"
     sudo mkdir -p "$DOCKERD_LOG_DIR"
@@ -213,9 +221,13 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     DOCKERD_PIDFILE="/var/run/dockerd.pid"
     sudo rm -f "$DOCKERD_PIDFILE"
     
+    # Try to start dockerd with overlay2 first, fallback to vfs if it fails
+    STORAGE_DRIVER="overlay2"
+    echo "Attempting to start Docker daemon with $STORAGE_DRIVER storage driver..."
+    
     # Start dockerd with security-hardening options
     # Wrap the entire command including redirection in sudo bash -c to ensure proper permissions
-    sudo bash -c "dockerd --iptables=true --icc=false --storage-driver=overlay2 --pidfile=\"$DOCKERD_PIDFILE\" >> \"$DOCKERD_LOG\" 2>&1 &"
+    sudo bash -c "dockerd --iptables=true --icc=false --storage-driver=$STORAGE_DRIVER --pidfile=\"$DOCKERD_PIDFILE\" >> \"$DOCKERD_LOG\" 2>&1 &"
     
     # Resolve the actual Docker daemon PID from the pidfile
     DOCKERD_PID=""
@@ -228,10 +240,42 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
     done
 
     if [[ -z "$DOCKERD_PID" ]]; then
-        echo "ERROR: Failed to obtain Docker daemon PID from '$DOCKERD_PIDFILE'."
+        echo "⚠️  Failed to obtain Docker daemon PID with $STORAGE_DRIVER driver."
         echo "Docker daemon logs:"
         sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
-        exit 1
+        
+        # Check if the failure was due to overlay2 not being supported
+        if sudo grep -q "driver not supported\|operation not permitted\|overlay" "$DOCKERD_LOG" 2>/dev/null; then
+            echo ""
+            echo "🔄 Retrying with vfs storage driver (slower but more compatible)..."
+            STORAGE_DRIVER="vfs"
+            
+            # Clean up log and pidfile for retry
+            sudo rm -f "$DOCKERD_PIDFILE"
+            sudo bash -c "> \"$DOCKERD_LOG\""
+            
+            # Retry with vfs storage driver
+            sudo bash -c "dockerd --iptables=true --icc=false --storage-driver=$STORAGE_DRIVER --pidfile=\"$DOCKERD_PIDFILE\" >> \"$DOCKERD_LOG\" 2>&1 &"
+            
+            # Wait for pidfile again
+            for i in {1..30}; do
+                DOCKERD_PID=$(sudo cat "$DOCKERD_PIDFILE" 2>/dev/null || true)
+                if [[ -n "$DOCKERD_PID" ]]; then
+                    break
+                fi
+                sleep 1
+            done
+            
+            if [[ -z "$DOCKERD_PID" ]]; then
+                echo "ERROR: Failed to start Docker daemon even with vfs storage driver."
+                echo "Docker daemon logs:"
+                sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+                exit 1
+            fi
+        else
+            echo "ERROR: Failed to obtain Docker daemon PID."
+            exit 1
+        fi
     fi
     
     # Wait for Docker daemon to be ready
@@ -245,6 +289,42 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         if ! sudo kill -0 "$DOCKERD_PID" 2>/dev/null; then
             echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
             sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+            
+            # If overlay2 failed, try vfs as fallback
+            if [[ "$STORAGE_DRIVER" == "overlay2" ]] && sudo grep -q "driver not supported\|operation not permitted\|overlay" "$DOCKERD_LOG" 2>/dev/null; then
+                echo ""
+                echo "🔄 Retrying with vfs storage driver (slower but more compatible)..."
+                STORAGE_DRIVER="vfs"
+                
+                # Clean up for retry
+                sudo rm -f "$DOCKERD_PIDFILE"
+                sudo bash -c "> \"$DOCKERD_LOG\""
+                
+                # Retry with vfs storage driver
+                sudo bash -c "dockerd --iptables=true --icc=false --storage-driver=$STORAGE_DRIVER --pidfile=\"$DOCKERD_PIDFILE\" >> \"$DOCKERD_LOG\" 2>&1 &"
+                
+                # Wait for pidfile
+                DOCKERD_PID=""
+                for i in {1..30}; do
+                    DOCKERD_PID=$(sudo cat "$DOCKERD_PIDFILE" 2>/dev/null || true)
+                    if [[ -n "$DOCKERD_PID" ]]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                if [[ -z "$DOCKERD_PID" ]]; then
+                    echo "ERROR: Failed to start Docker daemon even with vfs storage driver."
+                    echo "Docker daemon logs:"
+                    sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
+                    exit 1
+                fi
+                
+                # Reset attempt counter for new daemon start
+                attempt=0
+                continue
+            fi
+            
             exit 1
         fi
         
@@ -256,7 +336,7 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         fi
         sleep 1
     done
-    echo "✅ Docker daemon is running and ready!"
+    echo "✅ Docker daemon is running and ready with $STORAGE_DRIVER storage driver!"
 else
     echo "ℹ️  Docker daemon not started (ENABLE_DIND=${ENABLE_DIND:-false})"
     echo "   Set ENABLE_DIND=true to start the Docker daemon inside the container"
