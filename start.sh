@@ -6,7 +6,6 @@ DOCKERD_PID=""
 # --- Print actionable guidance for Docker-in-Docker failures ---
 print_dind_troubleshooting() {
     local log_file="$1"
-    local error_type="$2"
     
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
