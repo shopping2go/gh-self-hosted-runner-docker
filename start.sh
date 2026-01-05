@@ -245,7 +245,7 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
         sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
         
         # Check if the failure was due to overlay2 not being supported
-        if sudo grep -q "driver not supported\|operation not permitted\|overlay" "$DOCKERD_LOG" 2>/dev/null; then
+        if [[ "$STORAGE_DRIVER" == "overlay2" ]] && sudo grep -q "driver not supported\|operation not permitted\|failed to mount overlay\|overlay2: not supported" "$DOCKERD_LOG" 2>/dev/null; then
             echo ""
             echo "🔄 Retrying with vfs storage driver (slower but more compatible)..."
             STORAGE_DRIVER="vfs"
@@ -290,8 +290,8 @@ if [[ "${ENABLE_DIND,,}" == "true" ]]; then
             echo "ERROR: Docker daemon process exited unexpectedly. Check logs:"
             sudo cat "$DOCKERD_LOG" 2>/dev/null || echo "⚠️  Unable to read Docker daemon log file."
             
-            # If overlay2 failed, try vfs as fallback
-            if [[ "$STORAGE_DRIVER" == "overlay2" ]] && sudo grep -q "driver not supported\|operation not permitted\|overlay" "$DOCKERD_LOG" 2>/dev/null; then
+            # If overlay2 failed, try vfs as fallback (only if not already using vfs)
+            if [[ "$STORAGE_DRIVER" == "overlay2" ]] && sudo grep -q "driver not supported\|operation not permitted\|failed to mount overlay\|overlay2: not supported" "$DOCKERD_LOG" 2>/dev/null; then
                 echo ""
                 echo "🔄 Retrying with vfs storage driver (slower but more compatible)..."
                 STORAGE_DRIVER="vfs"
