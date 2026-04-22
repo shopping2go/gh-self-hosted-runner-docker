@@ -1,0 +1,104 @@
+name: Check for GitHub Actions Runner Update
+
+# Läuft täglich (und manuell) und prüft, ob eine neue Version des
+# offiziellen GitHub Actions Runners (actions/runner) veröffentlicht wurde.
+# Ist eine neue Version verfügbar, wird der Deployment-Workflow
+# "Build and Push Docker Image to GHCR and Docker Hub" automatisch angestoßen.
+#
+# Tracking-Mechanismus:
+#   Es wird ein leichtgewichtiges Git-Tag "runner-v<VERSION>" im Repo angelegt.
+#   Existiert das Tag bereits, ist bereits ein Build mit dieser Version erfolgt
+#   und es wird nichts unternommen.
+
+on:
+  schedule:
+    # Wöchentlich sonntags um 04:17 UTC (versetzt, um GitHub-API-Peak-Zeiten zu meiden)
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Deployment erzwingen, auch wenn keine neue Runner-Version vorliegt'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write   # für das Anlegen/Pushen des Tracking-Tags
+  actions: write    # zum Auslösen des Deployment-Workflows
+
+jobs:
+  check-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get latest actions/runner release
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUNNER_VERSION=$(gh api repos/actions/runner/releases/latest --jq '.tag_name' | sed 's/^v//')
+          if [ -z "$RUNNER_VERSION" ] || [ "$RUNNER_VERSION" = "null" ]; then
+            echo "❌ Konnte aktuelle Runner-Version nicht ermitteln"
+            exit 1
+          fi
+          echo "Latest runner version: $RUNNER_VERSION"
+          echo "version=$RUNNER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=runner-v$RUNNER_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tracking tag already exists
+        id: check
+        run: |
+          TAG="${{ steps.latest.outputs.tag }}"
+          FORCE="${{ github.event.inputs.force }}"
+
+          if [ "$FORCE" = "true" ]; then
+            echo "🔧 Force-Modus aktiv – Deployment wird erzwungen"
+            echo "needs_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "✅ Tag $TAG existiert bereits – kein neues Deployment nötig"
+            echo "needs_deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "🆕 Neue Runner-Version erkannt – Deployment wird angestoßen"
+            echo "needs_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger deployment workflow
+        if: steps.check.outputs.needs_deploy == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🚀 Starte Workflow 'docker-ghcr.yml' auf Branch '${{ github.ref_name }}'"
+          gh workflow run docker-ghcr.yml --ref "${{ github.ref_name }}"
+
+      - name: Create tracking tag
+        if: steps.check.outputs.needs_deploy == 'true' && github.event.inputs.force != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.latest.outputs.tag }}"
+          VERSION="${{ steps.latest.outputs.version }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG" -m "GitHub Actions Runner v$VERSION – Deployment angestoßen"
+          git push origin "$TAG"
+          echo "🏷️  Tracking-Tag $TAG angelegt"
+
+      - name: Summary
+        run: |
+          echo "### Runner-Update-Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Aktuelle Runner-Version: **${{ steps.latest.outputs.version }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deployment angestoßen: **${{ steps.check.outputs.needs_deploy }}**" >> "$GITHUB_STEP_SUMMARY"
